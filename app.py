@@ -67,7 +67,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🧪 AquaEquil: Chemical Equilibrium Simulator")
+st.title("AquaEquil: Chemical Equilibrium Simulator")
 st.caption(
     "NaOH–NaOCl–HCl acid–base equilibrium, validation, and speciation"
 )
