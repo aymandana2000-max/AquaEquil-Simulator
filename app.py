@@ -184,7 +184,7 @@ with calculator_tab:
     with col3:
         st.metric(
             "HCl Input",
-            f"{hcl_mM:.2f} mM"
+            f"{hcl_mM:.5f} mM"
         )
 
     st.divider()
