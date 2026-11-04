@@ -67,25 +67,33 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🧪 AquaEquil: Chemical Equilibrium Simulator")
-st.caption(
-    "NaOH–NaOCl–HCl acid–base equilibrium, validation, and speciation"
-)
-
 st.markdown(
     """
     <style>
-    [data-testid="stAppViewContainer"] {
-        overflow: hidden;
+    html, body {
+        overflow: hidden !important;
+        height: 100vh !important;
+    }
+
+    [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] > section,
+    [data-testid="stMain"],
+    [data-testid="stAppViewBlockContainer"] {
+        overflow: hidden !important;
+        height: 100vh !important;
     }
 
     [data-testid="stAppViewBlockContainer"] {
-        padding-top: 1rem;
-        padding-bottom: 0rem;
+        padding-top: 1rem !important;
+        padding-bottom: 0rem !important;
     }
 
-    [data-testid="stVerticalBlock"] {
-        gap: 0.5rem;
+    [data-testid="stHeader"] {
+        display: none !important;
+    }
+
+    footer {
+        display: none !important;
     }
     </style>
     """,
