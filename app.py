@@ -72,7 +72,25 @@ st.caption(
     "NaOH–NaOCl–HCl acid–base equilibrium, validation, and speciation"
 )
 
+st.markdown(
+    """
+    <style>
+    [data-testid="stAppViewContainer"] {
+        overflow: hidden;
+    }
 
+    [data-testid="stAppViewBlockContainer"] {
+        padding-top: 1rem;
+        padding-bottom: 0rem;
+    }
+
+    [data-testid="stVerticalBlock"] {
+        gap: 0.5rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 # ============================================================
 # SIDEBAR INPUTS
 # ============================================================
