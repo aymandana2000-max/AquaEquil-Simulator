@@ -75,19 +75,17 @@ st.caption(
 # SIDEBAR INPUTS
 # ============================================================
 
-st.sidebar.header("Chemical Inputs")
-
 naoh = st.sidebar.number_input(
     "NaOH concentration (M)",
     min_value=0.0,
-    value=0.001,
+    value=0.0,
     format="%.8f"
 )
 
 naocl = st.sidebar.number_input(
     "NaOCl concentration (M)",
     min_value=0.0,
-    value=0.001,
+    value=0.0,
     format="%.8f"
 )
 
@@ -117,7 +115,18 @@ calculate_button = st.sidebar.button(
     type="primary"
 )
 
+if not calculate_button:
+    st.info(
+        "Enter NaOH and NaOCl concentrations, then click "
+        "'Calculate Equilibrium' to begin."
+    )
+    st.stop()
 
+if naoh <= 0 or naocl <= 0:
+    st.warning(
+        "Please enter positive NaOH and NaOCl concentrations."
+    )
+    st.stop()
 # ============================================================
 # CURRENT EQUILIBRIUM RESULT
 # ============================================================
