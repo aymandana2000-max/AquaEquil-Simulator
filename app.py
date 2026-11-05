@@ -63,7 +63,6 @@ def calculate_equilibrium(
 
 st.set_page_config(
     page_title="AquaEquil Simulator",
-    page_icon="🧪",
     layout="wide"
 )
 
