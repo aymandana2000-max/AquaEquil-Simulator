@@ -356,23 +356,12 @@ for group in selected_groups:
         format="%.5f",
         key=f"total_{group}"
     )
+pKas = GROUPS[group]["pKas"]
 
-    pKas = []
-
-    for index, default_pka in enumerate(
-        GROUPS[group]["pKas"]
-    ):
-        pka = st.sidebar.number_input(
-            f"{group} pKa {index + 1}",
-            min_value=-20.0,
-            max_value=20.0,
-            value=None,
-            step=0.1,
-            format="%.1f",
-            key=f"pka_{group}_{index}"
-        )
-
-        pKas.append(pka)
+st.sidebar.write(
+    "Assigned pKa values:",
+    ", ".join(f"{pka:.2f}" for pka in pKas)
+)
 
     group_inputs[group] = {
         "total": total,
@@ -389,10 +378,6 @@ inputs_ready = (
     )
     and all(
         settings["total"] is not None
-        and all(
-            pka is not None
-            for pka in settings["pKas"]
-        )
         for settings in group_inputs.values()
     )
 )
