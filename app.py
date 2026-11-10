@@ -171,6 +171,7 @@ def solve_general(
     fixed_positive = 0.0
     fixed_negative = 0.0
     families = []
+    fixed_negative += hcl_mM / 1000.0
 
     for reagent in selected_reagents:
         amount = reagent_amounts[reagent]
@@ -471,131 +472,152 @@ with main_page:
 
         st.header("Visualization")
 
-        hcl_values = np.linspace(
-            0,
-            1.9,
-            120
-        )
+hcl_values = np.linspace(
+    0.0,
+    1.9,
+    120
+)
 
-        curve = [
-            solve_general(
-                selected_reagents,
-                reagent_amounts,
-                selected_groups,
-                group_inputs
-            )
-            for _ in hcl_values
-        ]
+curve = [
+    solve_general(
+        selected_reagents,
+        reagent_amounts,
+        selected_groups,
+        group_inputs,
+        hcl_mM=hcl_value
+    )
+    for hcl_value in hcl_values
+]
 
-        st.subheader("pH 7 Visualization")
 
-        fig_pH, ax_pH = plt.subplots(
-            figsize=(10, 5)
-        )
+# ------------------------------------------------------------
+# pH graph
+# ------------------------------------------------------------
 
-        ax_pH.plot(
-            hcl_values,
-            [
-                item["pH"]
-                for item in curve
-            ],
-            linewidth=2,
-            label="Calculated pH"
-        )
+st.subheader("pH versus HCl concentration")
 
-        if (
-            "NaOH" in selected_reagents
-            and "NaOCl" in selected_reagents
-        ):
-            validation_x = [
-                0.00,
-                0.50,
-                1.00,
-                1.50,
-                1.90
-            ]
+fig_pH, ax_pH = plt.subplots(
+    figsize=(10, 5)
+)
 
-            validation_y = [
-                original_equilibrium(
-                    reagent_amounts["NaOH"],
-                    reagent_amounts["NaOCl"],
-                    hcl,
-                    7.53,
-                    1e-14
-                )["pH"]
-                for hcl in validation_x
-            ]
+ax_pH.plot(
+    hcl_values,
+    [
+        item["pH"]
+        for item in curve
+    ],
+    linewidth=2,
+    label="Calculated pH"
+)
 
-            ax_pH.scatter(
-                validation_x,
-                validation_y,
-                color="red",
-                marker="x",
-                s=70,
-                linewidths=2,
-                label="Validation points"
-            )
+if (
+    "NaOH" in selected_reagents
+    and "NaOCl" in selected_reagents
+):
+    validation_x = [
+        0.00,
+        0.50,
+        1.00,
+        1.50,
+        1.90
+    ]
 
-        ax_pH.set_title("pH versus HCl Addition")
-        ax_pH.set_xlabel("HCl addition (mM)")
-        ax_pH.set_ylabel("pH")
-        ax_pH.set_ylim(0, 14)
-        ax_pH.grid(alpha=0.3)
-        ax_pH.legend()
+    validation_y = [
+        original_equilibrium(
+            reagent_amounts["NaOH"],
+            reagent_amounts["NaOCl"],
+            hcl,
+            7.53,
+            1e-14
+        )["pH"]
+        for hcl in validation_x
+    ]
 
-        fig_pH.tight_layout()
-        st.pyplot(fig_pH)
+    ax_pH.scatter(
+        validation_x,
+        validation_y,
+        color="red",
+        marker="x",
+        s=70,
+        linewidths=2,
+        label="Validation points"
+    )
 
-        st.subheader("Concentration 10⁷ Visualization")
+ax_pH.set_title("pH versus HCl concentration")
+ax_pH.set_xlabel("HCl concentration (mM)")
+ax_pH.set_ylabel("pH")
+ax_pH.set_ylim(0, 14)
+ax_pH.grid(alpha=0.3)
 
-        fig_species, ax_species = plt.subplots(
-            figsize=(10, 6)
-        )
+ax_pH.legend(
+    loc="upper center",
+    bbox_to_anchor=(0.5, -0.18),
+    ncol=2,
+    frameon=False
+)
 
-        for species_name in result["species"]:
-            ax_species.plot(
-                hcl_values,
-                [
-                    item["species"].get(
-                        species_name,
-                        0
-                    ) * 1000
-                    for item in curve
-                ],
-                linewidth=2,
-                label=species_name
-            )
+fig_pH.tight_layout()
+st.pyplot(fig_pH)
 
-        ax_species.set_title(
-            "All Interacting Species"
-        )
-        ax_species.set_xlabel(
-            "HCl addition (mM)"
-        )
-        ax_species.set_ylabel(
-            "Concentration (mM)"
-        )
-        ax_species.grid(alpha=0.3)
-        ax_species.legend(ncol=3)
 
-        fig_species.tight_layout()
-        st.pyplot(fig_species)
+# ------------------------------------------------------------
+# Species concentration graph
+# ------------------------------------------------------------
 
-        graph_buffer = io.BytesIO()
+st.subheader("Equilibrium species concentration versus HCl concentration")
 
-        fig_species.savefig(
-            graph_buffer,
-            format="png",
-            dpi=300,
-            bbox_inches="tight"
-        )
+fig_species, ax_species = plt.subplots(
+    figsize=(10, 6)
+)
 
-        st.download_button(
-            "Download Visualization Graphs as PNG",
-            graph_buffer.getvalue(),
-            "AquaEquil_visualization.png",
-            "image/png"
-        )
+for species_name in result["species"]:
+    ax_species.plot(
+        hcl_values,
+        [
+            item["species"].get(
+                species_name,
+                0.0
+            ) * 1000
+            for item in curve
+        ],
+        linewidth=2,
+        label=species_name
+    )
+
+ax_species.set_title(
+    "Equilibrium species concentration versus HCl concentration"
+)
+
+ax_species.set_xlabel("HCl concentration (mM)")
+ax_species.set_ylabel("Concentration (mM)")
+ax_species.grid(alpha=0.3)
+
+ax_species.legend(
+    loc="upper center",
+    bbox_to_anchor=(0.5, -0.18),
+    ncol=3,
+    frameon=False
+)
+
+fig_species.tight_layout()
+st.pyplot(fig_species)
+
+
+graph_buffer = io.BytesIO()
+
+fig_species.savefig(
+    graph_buffer,
+    format="png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+st.download_button(
+    "Download Visualization Graphs as PNG",
+    graph_buffer.getvalue(),
+    "AquaEquil_visualization.png",
+    "image/png"
+)
 
 
 # ============================================================
