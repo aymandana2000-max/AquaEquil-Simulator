@@ -212,7 +212,7 @@ with graphs_tab:
     st.pyplot(fig)
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
     st.download_button("Download Graphs as PNG", buf.getvalue(), "AquaEquil_graphs.png", "image/png")
- st.markdown("### Family composition during titration")
+st.markdown("### Family composition during titration")
     family_names = [f["label"] for f in families]
     family_totals = np.array([
         [sum(x["species"][name] for name in family["names"]) * 1000 for family in families]
