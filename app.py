@@ -1,9 +1,12 @@
+
+
 import io
 import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
+
 
 st.set_page_config(
     page_title="AquaEquil Simulator",
@@ -28,7 +31,7 @@ GROUPS = {
     },
     "SO₄": {
         "species": ["H₂SO₄", "HSO₄⁻", "SO₄²⁻"],
-        "pKas": [-3.0, 1.99],
+        "pKas": [-3.00, 1.99],
         "charges": [0, -1, -2]
     },
     "PO₄": {
@@ -138,7 +141,7 @@ REAGENTS = {
 
 
 # ============================================================
-# EQUILIBRIUM FUNCTIONS
+# GENERAL EQUILIBRIUM FUNCTIONS
 # ============================================================
 
 def distribution(h, total, pKas):
@@ -181,9 +184,9 @@ def solve_general(
             amount * reagent_data["negative"]
         )
 
-    for group_name in selected_groups:
-        group_data = GROUPS[group_name]
-        settings = group_inputs[group_name]
+    for group in selected_groups:
+        group_data = GROUPS[group]
+        settings = group_inputs[group]
 
         total = settings["total"]
         pKas = settings["pKas"]
@@ -220,7 +223,9 @@ def solve_general(
                 family["charges"]
             ):
                 if charge < 0:
-                    negative += amount * abs(charge)
+                    negative += (
+                        amount * abs(charge)
+                    )
 
         return positive - negative
 
@@ -253,6 +258,10 @@ def solve_general(
         "charge_residual": charge_balance(log_h)
     }
 
+
+# ============================================================
+# ORIGINAL VALIDATION MODEL
+# ============================================================
 
 def original_equilibrium(
     naoh,
@@ -356,12 +365,17 @@ for group in selected_groups:
         format="%.5f",
         key=f"total_{group}"
     )
+
+    # pKa values are assigned automatically.
     pKas = GROUPS[group]["pKas"]
 
-st.sidebar.write(
-    "Assigned pKa values:",
-    ", ".join(f"{pka:.2f}" for pka in pKas)
-)
+    st.sidebar.caption(
+        "Assigned pKa values: "
+        + ", ".join(
+            f"{value:.2f}"
+            for value in pKas
+        )
+    )
 
     group_inputs[group] = {
         "total": total,
@@ -384,7 +398,7 @@ inputs_ready = (
 
 
 # ============================================================
-# PAGES
+# PAGE BAR
 # ============================================================
 
 main_page, validation_page = st.tabs(
@@ -405,7 +419,7 @@ with main_page:
     if not inputs_ready:
         st.info(
             "Choose reagent(s) and species group(s), "
-            "then enter all concentrations and pKa values."
+            "then enter all concentrations."
         )
     else:
         result = solve_general(
@@ -481,7 +495,10 @@ with main_page:
 
         ax_pH.plot(
             hcl_values,
-            [item["pH"] for item in curve],
+            [
+                item["pH"]
+                for item in curve
+            ],
             linewidth=2,
             label="Calculated pH"
         )
@@ -489,8 +506,6 @@ with main_page:
         if (
             "NaOH" in selected_reagents
             and "NaOCl" in selected_reagents
-            and "NaOH" in reagent_amounts
-            and "NaOCl" in reagent_amounts
         ):
             validation_x = [
                 0.00,
@@ -521,6 +536,7 @@ with main_page:
                 label="Validation points"
             )
 
+        ax_pH.set_title("pH versus HCl Addition")
         ax_pH.set_xlabel("HCl addition (mM)")
         ax_pH.set_ylabel("pH")
         ax_pH.set_ylim(0, 14)
@@ -550,8 +566,15 @@ with main_page:
                 label=species_name
             )
 
-        ax_species.set_xlabel("HCl addition (mM)")
-        ax_species.set_ylabel("Concentration (mM)")
+        ax_species.set_title(
+            "All Interacting Species"
+        )
+        ax_species.set_xlabel(
+            "HCl addition (mM)"
+        )
+        ax_species.set_ylabel(
+            "Concentration (mM)"
+        )
         ax_species.grid(alpha=0.3)
         ax_species.legend(ncol=3)
 
@@ -583,8 +606,8 @@ with validation_page:
     st.title("Validation")
 
     st.info(
-        "Enter the validation values and press "
-        "Run Validation."
+        "Enter the original validation values "
+        "and press Run Validation."
     )
 
     validation_naoh = st.number_input(
@@ -634,6 +657,7 @@ with validation_page:
             "No validation values or graphs are shown "
             "until Run Validation is pressed."
         )
+
     elif any(
         value is None
         for value in [
@@ -646,6 +670,7 @@ with validation_page:
         st.warning(
             "Enter all validation values first."
         )
+
     else:
         validation_cases = [
             0.00,
@@ -663,7 +688,7 @@ with validation_page:
             1.90: 6.58
         }
 
-        validation_rows = []
+        rows = []
 
         for hcl in validation_cases:
             current = original_equilibrium(
@@ -689,7 +714,7 @@ with validation_page:
                 ) < 1e-7
             )
 
-            validation_rows.append({
+            rows.append({
                 "HCl (mM)": hcl,
                 "Calculated pH": current["pH"],
                 "Expected pH": expected_pH[hcl],
@@ -707,9 +732,7 @@ with validation_page:
                 )
             })
 
-        validation_df = pd.DataFrame(
-            validation_rows
-        )
+        validation_df = pd.DataFrame(rows)
 
         st.dataframe(
             validation_df.style.format({
@@ -777,7 +800,9 @@ with validation_page:
         axes[0].set_title(
             "Original Validation Titration Curve"
         )
-        axes[0].set_xlabel("HCl addition (mM)")
+        axes[0].set_xlabel(
+            "HCl addition (mM)"
+        )
         axes[0].set_ylabel("pH")
         axes[0].set_ylim(0, 14)
         axes[0].grid(alpha=0.3)
@@ -806,8 +831,12 @@ with validation_page:
         axes[1].set_title(
             "Original HOCl/OCl⁻ Speciation"
         )
-        axes[1].set_xlabel("HCl addition (mM)")
-        axes[1].set_ylabel("Concentration (mM)")
+        axes[1].set_xlabel(
+            "HCl addition (mM)"
+        )
+        axes[1].set_ylabel(
+            "Concentration (mM)"
+        )
         axes[1].grid(alpha=0.3)
         axes[1].legend()
 
