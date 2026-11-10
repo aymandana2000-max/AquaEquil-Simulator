@@ -1,5 +1,3 @@
-
-
 import io
 import numpy as np
 import pandas as pd
@@ -7,16 +5,11 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 
-
 st.set_page_config(
     page_title="AquaEquil Simulator",
     layout="wide"
 )
 
-
-# ============================================================
-# SPECIES GROUPS
-# ============================================================
 
 GROUPS = {
     "OCl": {
@@ -42,118 +35,34 @@ GROUPS = {
 }
 
 
-# ============================================================
-# REAGENTS
-# ============================================================
-
 REAGENTS = {
-    "NaOH": {
-        "label": "NaOH",
-        "groups": [],
-        "positive": 1,
-        "negative": 1
-    },
-    "KOH": {
-        "label": "KOH",
-        "groups": [],
-        "positive": 1,
-        "negative": 1
-    },
-    "LiOH": {
-        "label": "LiOH",
-        "groups": [],
-        "positive": 1,
-        "negative": 1
-    },
-    "Ca(OH)₂": {
-        "label": "Ca(OH)₂",
-        "groups": [],
-        "positive": 2,
-        "negative": 2
-    },
-    "HCl": {
-        "label": "HCl",
-        "groups": [],
-        "positive": 0,
-        "negative": 1
-    },
-    "HNO₃": {
-        "label": "HNO₃",
-        "groups": [],
-        "positive": 0,
-        "negative": 1
-    },
-    "H₂SO₄": {
-        "label": "H₂SO₄",
-        "groups": ["SO₄"],
-        "positive": 0,
-        "negative": 2
-    },
-    "NaOCl": {
-        "label": "NaOCl",
-        "groups": ["OCl"],
-        "positive": 1,
-        "negative": 1
-    },
-    "KOCl": {
-        "label": "KOCl",
-        "groups": ["OCl"],
-        "positive": 1,
-        "negative": 1
-    },
-    "Na₂CO₃": {
-        "label": "Na₂CO₃",
-        "groups": ["CO₃"],
-        "positive": 2,
-        "negative": 2
-    },
-    "K₂CO₃": {
-        "label": "K₂CO₃",
-        "groups": ["CO₃"],
-        "positive": 2,
-        "negative": 2
-    },
-    "NaHCO₃": {
-        "label": "NaHCO₃",
-        "groups": ["CO₃"],
-        "positive": 1,
-        "negative": 1
-    },
-    "Na₂SO₄": {
-        "label": "Na₂SO₄",
-        "groups": ["SO₄"],
-        "positive": 2,
-        "negative": 2
-    },
-    "K₂SO₄": {
-        "label": "K₂SO₄",
-        "groups": ["SO₄"],
-        "positive": 2,
-        "negative": 2
-    },
-    "Na₃PO₄": {
-        "label": "Na₃PO₄",
-        "groups": ["PO₄"],
-        "positive": 3,
-        "negative": 3
-    }
+    "NaOH": {"groups": [], "positive": 1, "negative": 1},
+    "KOH": {"groups": [], "positive": 1, "negative": 1},
+    "LiOH": {"groups": [], "positive": 1, "negative": 1},
+    "Ca(OH)₂": {"groups": [], "positive": 2, "negative": 2},
+    "HCl": {"groups": [], "positive": 0, "negative": 1},
+    "HNO₃": {"groups": [], "positive": 0, "negative": 1},
+    "H₂SO₄": {"groups": ["SO₄"], "positive": 0, "negative": 2},
+    "NaOCl": {"groups": ["OCl"], "positive": 1, "negative": 1},
+    "KOCl": {"groups": ["OCl"], "positive": 1, "negative": 1},
+    "Na₂CO₃": {"groups": ["CO₃"], "positive": 2, "negative": 2},
+    "K₂CO₃": {"groups": ["CO₃"], "positive": 2, "negative": 2},
+    "NaHCO₃": {"groups": ["CO₃"], "positive": 1, "negative": 1},
+    "Na₂SO₄": {"groups": ["SO₄"], "positive": 2, "negative": 2},
+    "K₂SO₄": {"groups": ["SO₄"], "positive": 2, "negative": 2},
+    "Na₃PO₄": {"groups": ["PO₄"], "positive": 3, "negative": 3}
 }
 
 
-# ============================================================
-# GENERAL EQUILIBRIUM FUNCTIONS
-# ============================================================
-
 def distribution(h, total, pKas):
     ka_values = 10 ** (-np.asarray(pKas, dtype=float))
-    number_of_steps = len(ka_values)
+    n = len(ka_values)
 
-    terms = [h ** number_of_steps]
+    terms = [h ** n]
 
-    for i in range(1, number_of_steps + 1):
+    for i in range(1, n + 1):
         terms.append(
-            np.prod(ka_values[:i])
-            * h ** (number_of_steps - i)
+            np.prod(ka_values[:i]) * h ** (n - i)
         )
 
     terms = np.asarray(terms)
@@ -166,44 +75,35 @@ def solve_general(
     reagent_amounts,
     selected_groups,
     group_inputs,
+    hcl_mM=0.0,
     kw=1e-14
 ):
     fixed_positive = 0.0
-    fixed_negative = 0.0
+    fixed_negative = hcl_mM / 1000.0
     families = []
-    fixed_negative += hcl_mM / 1000.0
 
     for reagent in selected_reagents:
         amount = reagent_amounts[reagent]
-        reagent_data = REAGENTS[reagent]
+        data = REAGENTS[reagent]
 
-        fixed_positive += (
-            amount * reagent_data["positive"]
-        )
-
-        fixed_negative += (
-            amount * reagent_data["negative"]
-        )
+        fixed_positive += amount * data["positive"]
+        fixed_negative += amount * data["negative"]
 
     for group in selected_groups:
-        group_data = GROUPS[group]
+        data = GROUPS[group]
         settings = group_inputs[group]
 
         total = settings["total"]
         pKas = settings["pKas"]
 
         families.append({
-            "species": group_data["species"],
-            "charges": group_data["charges"],
+            "species": data["species"],
+            "charges": data["charges"],
             "total": total,
             "pKas": pKas
         })
 
-        maximum_charge = abs(
-            min(group_data["charges"])
-        )
-
-        fixed_positive += total * maximum_charge
+        fixed_positive += total * abs(min(data["charges"]))
 
     def charge_balance(log_h):
         h = 10 ** log_h
@@ -224,9 +124,7 @@ def solve_general(
                 family["charges"]
             ):
                 if charge < 0:
-                    negative += (
-                        amount * abs(charge)
-                    )
+                    negative += amount * abs(charge)
 
         return positive - negative
 
@@ -259,10 +157,6 @@ def solve_general(
         "charge_residual": charge_balance(log_h)
     }
 
-
-# ============================================================
-# ORIGINAL VALIDATION MODEL
-# ============================================================
 
 def original_equilibrium(
     naoh,
@@ -304,7 +198,7 @@ def original_equilibrium(
 
 
 # ============================================================
-# SIDEBAR INPUTS
+# SIDEBAR
 # ============================================================
 
 st.sidebar.header("Reagents")
@@ -319,7 +213,7 @@ reagent_amounts = {}
 
 for reagent in selected_reagents:
     reagent_amounts[reagent] = st.sidebar.number_input(
-        f"{REAGENTS[reagent]['label']} amount (M)",
+        f"{reagent} amount (M)",
         min_value=0.0,
         value=None,
         step=0.1,
@@ -367,16 +261,19 @@ for group in selected_groups:
         key=f"total_{group}"
     )
 
-    # pKa values are assigned automatically.
     pKas = GROUPS[group]["pKas"]
 
-    st.sidebar.caption(
-        "Assigned pKa values: "
-        + ", ".join(
-            f"{value:.2f}"
-            for value in pKas
+    st.sidebar.markdown("Assigned pKa values")
+
+    for index, pka in enumerate(pKas):
+        st.sidebar.number_input(
+            f"{group} pKa {index + 1}",
+            value=float(pka),
+            step=0.1,
+            format="%.2f",
+            disabled=True,
+            key=f"display_pka_{group}_{index}"
         )
-    )
 
     group_inputs[group] = {
         "total": total,
@@ -398,15 +295,8 @@ inputs_ready = (
 )
 
 
-# ============================================================
-# PAGE BAR
-# ============================================================
-
 main_page, validation_page = st.tabs(
-    [
-        "Main",
-        "Validation"
-    ]
+    ["Main", "Validation"]
 )
 
 
@@ -427,7 +317,9 @@ with main_page:
             selected_reagents,
             reagent_amounts,
             selected_groups,
-            group_inputs
+            group_inputs,
+            hcl_mM=0.0,
+            kw=1e-14
         )
 
         st.subheader("Equilibrium Results")
@@ -441,17 +333,17 @@ with main_page:
             )
 
         with col2:
-            dominant_species = max(
+            dominant = max(
                 result["species"],
                 key=result["species"].get
             )
 
             st.metric(
                 "Largest Species",
-                dominant_species
+                dominant
             )
 
-        species_df = pd.DataFrame({
+        result_table = pd.DataFrame({
             "Species": list(result["species"].keys()),
             "Concentration (M)": list(
                 result["species"].values()
@@ -459,7 +351,7 @@ with main_page:
         })
 
         st.dataframe(
-            species_df.style.format({
+            result_table.style.format({
                 "Concentration (M)": "{:.5f}"
             }),
             use_container_width=True
@@ -472,152 +364,151 @@ with main_page:
 
         st.header("Visualization")
 
-hcl_values = np.linspace(
-    0.0,
-    1.9,
-    120
-)
+        hcl_values = np.linspace(
+            0.0,
+            1.9,
+            120
+        )
 
-curve = [
-    solve_general(
-        selected_reagents,
-        reagent_amounts,
-        selected_groups,
-        group_inputs,
-        hcl_mM=hcl_value
-    )
-    for hcl_value in hcl_values
-]
+        curve = [
+            solve_general(
+                selected_reagents,
+                reagent_amounts,
+                selected_groups,
+                group_inputs,
+                hcl_mM=hcl_value,
+                kw=1e-14
+            )
+            for hcl_value in hcl_values
+        ]
 
+        st.subheader("pH versus HCl concentration")
 
-# ------------------------------------------------------------
-# pH graph
-# ------------------------------------------------------------
+        fig_pH, ax_pH = plt.subplots(
+            figsize=(10, 5)
+        )
 
-st.subheader("pH versus HCl concentration")
+        ax_pH.plot(
+            hcl_values,
+            [
+                item["pH"]
+                for item in curve
+            ],
+            linewidth=2,
+            label="Calculated pH"
+        )
 
-fig_pH, ax_pH = plt.subplots(
-    figsize=(10, 5)
-)
+        if (
+            "NaOH" in selected_reagents
+            and "NaOCl" in selected_reagents
+        ):
+            validation_x = [
+                0.00,
+                0.50,
+                1.00,
+                1.50,
+                1.90
+            ]
 
-ax_pH.plot(
-    hcl_values,
-    [
-        item["pH"]
-        for item in curve
-    ],
-    linewidth=2,
-    label="Calculated pH"
-)
+            validation_y = [
+                original_equilibrium(
+                    reagent_amounts["NaOH"],
+                    reagent_amounts["NaOCl"],
+                    hcl,
+                    7.53,
+                    1e-14
+                )["pH"]
+                for hcl in validation_x
+            ]
 
-if (
-    "NaOH" in selected_reagents
-    and "NaOCl" in selected_reagents
-):
-    validation_x = [
-        0.00,
-        0.50,
-        1.00,
-        1.50,
-        1.90
-    ]
+            ax_pH.scatter(
+                validation_x,
+                validation_y,
+                color="red",
+                marker="x",
+                s=70,
+                linewidths=2,
+                label="Validation points"
+            )
 
-    validation_y = [
-        original_equilibrium(
-            reagent_amounts["NaOH"],
-            reagent_amounts["NaOCl"],
-            hcl,
-            7.53,
-            1e-14
-        )["pH"]
-        for hcl in validation_x
-    ]
+        ax_pH.set_title(
+            "pH versus HCl concentration"
+        )
+        ax_pH.set_xlabel(
+            "HCl concentration (mM)"
+        )
+        ax_pH.set_ylabel("pH")
+        ax_pH.set_ylim(0, 14)
+        ax_pH.grid(alpha=0.3)
 
-    ax_pH.scatter(
-        validation_x,
-        validation_y,
-        color="red",
-        marker="x",
-        s=70,
-        linewidths=2,
-        label="Validation points"
-    )
+        ax_pH.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.18),
+            ncol=2,
+            frameon=False
+        )
 
-ax_pH.set_title("pH versus HCl concentration")
-ax_pH.set_xlabel("HCl concentration (mM)")
-ax_pH.set_ylabel("pH")
-ax_pH.set_ylim(0, 14)
-ax_pH.grid(alpha=0.3)
+        fig_pH.tight_layout()
+        st.pyplot(fig_pH)
 
-ax_pH.legend(
-    loc="upper center",
-    bbox_to_anchor=(0.5, -0.18),
-    ncol=2,
-    frameon=False
-)
+        st.subheader(
+            "Equilibrium species concentration versus HCl concentration"
+        )
 
-fig_pH.tight_layout()
-st.pyplot(fig_pH)
+        fig_species, ax_species = plt.subplots(
+            figsize=(10, 6)
+        )
 
+        for species_name in result["species"]:
+            ax_species.plot(
+                hcl_values,
+                [
+                    item["species"].get(
+                        species_name,
+                        0.0
+                    ) * 1000
+                    for item in curve
+                ],
+                linewidth=2,
+                label=species_name
+            )
 
-# ------------------------------------------------------------
-# Species concentration graph
-# ------------------------------------------------------------
+        ax_species.set_title(
+            "Equilibrium species concentration versus HCl concentration"
+        )
+        ax_species.set_xlabel(
+            "HCl concentration (mM)"
+        )
+        ax_species.set_ylabel(
+            "Concentration (mM)"
+        )
+        ax_species.grid(alpha=0.3)
 
-st.subheader("Equilibrium species concentration versus HCl concentration")
+        ax_species.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.18),
+            ncol=3,
+            frameon=False
+        )
 
-fig_species, ax_species = plt.subplots(
-    figsize=(10, 6)
-)
+        fig_species.tight_layout()
+        st.pyplot(fig_species)
 
-for species_name in result["species"]:
-    ax_species.plot(
-        hcl_values,
-        [
-            item["species"].get(
-                species_name,
-                0.0
-            ) * 1000
-            for item in curve
-        ],
-        linewidth=2,
-        label=species_name
-    )
+        graph_buffer = io.BytesIO()
 
-ax_species.set_title(
-    "Equilibrium species concentration versus HCl concentration"
-)
+        fig_species.savefig(
+            graph_buffer,
+            format="png",
+            dpi=300,
+            bbox_inches="tight"
+        )
 
-ax_species.set_xlabel("HCl concentration (mM)")
-ax_species.set_ylabel("Concentration (mM)")
-ax_species.grid(alpha=0.3)
-
-ax_species.legend(
-    loc="upper center",
-    bbox_to_anchor=(0.5, -0.18),
-    ncol=3,
-    frameon=False
-)
-
-fig_species.tight_layout()
-st.pyplot(fig_species)
-
-
-graph_buffer = io.BytesIO()
-
-fig_species.savefig(
-    graph_buffer,
-    format="png",
-    dpi=300,
-    bbox_inches="tight"
-)
-
-st.download_button(
-    "Download Visualization Graphs as PNG",
-    graph_buffer.getvalue(),
-    "AquaEquil_visualization.png",
-    "image/png"
-)
+        st.download_button(
+            "Download Visualization Graphs as PNG",
+            graph_buffer.getvalue(),
+            "AquaEquil_visualization.png",
+            "image/png"
+        )
 
 
 # ============================================================
@@ -656,7 +547,7 @@ with validation_page:
         max_value=20.0,
         value=None,
         step=0.1,
-        format="%.1f",
+        format="%.2f",
         key="validation_pka"
     )
 
@@ -769,7 +660,7 @@ with validation_page:
         )
 
         validation_x = np.linspace(
-            0,
+            0.0,
             1.9,
             120
         )
@@ -828,7 +719,13 @@ with validation_page:
         axes[0].set_ylabel("pH")
         axes[0].set_ylim(0, 14)
         axes[0].grid(alpha=0.3)
-        axes[0].legend()
+
+        axes[0].legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.18),
+            ncol=2,
+            frameon=False
+        )
 
         axes[1].plot(
             validation_x,
@@ -860,7 +757,13 @@ with validation_page:
             "Concentration (mM)"
         )
         axes[1].grid(alpha=0.3)
-        axes[1].legend()
+
+        axes[1].legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.18),
+            ncol=2,
+            frameon=False
+        )
 
         fig_validation.tight_layout()
         st.pyplot(fig_validation)
