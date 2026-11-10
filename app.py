@@ -1,4 +1,3 @@
-
 import io
 import numpy as np
 import pandas as pd
@@ -6,54 +5,254 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from scipy.optimize import brentq
 
-st.set_page_config(page_title="AquaEquil Simulator", layout="wide")
+st.set_page_config(
+    page_title="AquaEquil Simulator",
+    layout="wide"
+)
 
 
-def family_distribution(h, total, pKas):
-    kas = 10.0 ** (-np.asarray(pKas, dtype=float))
+# ============================================================
+# ORIGINAL VALIDATION MODEL
+# ============================================================
+
+def calculate_original_equilibrium(
+    naoh,
+    naocl,
+    hcl_mM,
+    pka=7.53,
+    kw=1e-14
+):
+    hcl = hcl_mM / 1000
+    ka = 10 ** (-pka)
+
+    sodium = naoh + naocl
+    chlorine_total = naocl
+    chloride = hcl
+
+    def charge_balance(log_h):
+        h = 10 ** log_h
+        oh = kw / h
+        ocl = chlorine_total * ka / (ka + h)
+
+        return h + sodium - oh - ocl - chloride
+
+    log_h = brentq(charge_balance, -14, 0)
+    h = 10 ** log_h
+    oh = kw / h
+    ocl = chlorine_total * ka / (ka + h)
+    hocl = chlorine_total - ocl
+
+    return {
+        "H": h,
+        "OH": oh,
+        "HOCl": hocl,
+        "OCl": ocl,
+        "pH": -np.log10(h),
+        "charge_residual": charge_balance(log_h),
+        "mass_error": hocl + ocl - chlorine_total
+    }
+
+
+# ============================================================
+# GENERAL SPECIES MODEL
+# ============================================================
+
+SPECIES_GROUPS = {
+    "OCl": {
+        "species": ["HOCl", "OCl-"],
+        "pKas": [7.53],
+        "charges": [0, -1]
+    },
+    "CO3": {
+        "species": ["H2CO3", "HCO3-", "CO3--"],
+        "pKas": [6.35, 10.33],
+        "charges": [0, -1, -2]
+    },
+    "SO4": {
+        "species": ["H2SO4", "HSO4-", "SO4--"],
+        "pKas": [-3.0, 1.99],
+        "charges": [0, -1, -2]
+    },
+    "PO4": {
+        "species": ["H3PO4", "H2PO4-", "HPO4--", "PO4---"],
+        "pKas": [2.15, 7.20, 12.35],
+        "charges": [0, -1, -2, -3]
+    }
+}
+
+
+REAGENTS = {
+    "NaOH": {
+        "cation": ("Na+", 1),
+        "anion": ("OH-", -1),
+        "acid_equivalents": 0
+    },
+    "KOH": {
+        "cation": ("K+", 1),
+        "anion": ("OH-", -1),
+        "acid_equivalents": 0
+    },
+    "LiOH": {
+        "cation": ("Li+", 1),
+        "anion": ("OH-", -1),
+        "acid_equivalents": 0
+    },
+    "Ca(OH)2": {
+        "cation": ("Ca++", 2),
+        "anion": ("OH-", -1),
+        "acid_equivalents": 0
+    },
+    "HCl": {
+        "cation": ("H+", 1),
+        "anion": ("Cl-", -1),
+        "acid_equivalents": 1
+    },
+    "HNO3": {
+        "cation": ("H+", 1),
+        "anion": ("NO3-", -1),
+        "acid_equivalents": 1
+    },
+    "H2SO4": {
+        "cation": ("H+", 2),
+        "anion": ("SO4--", -2),
+        "acid_equivalents": 2
+    },
+    "NaOCl": {
+        "cation": ("Na+", 1),
+        "anion": ("OCl-", -1),
+        "group": "OCl",
+        "group_charge": 1
+    },
+    "KOCl": {
+        "cation": ("K+", 1),
+        "anion": ("OCl-", -1),
+        "group": "OCl",
+        "group_charge": 1
+    },
+    "Na2CO3": {
+        "cation": ("Na+", 2),
+        "anion": ("CO3--", -2),
+        "group": "CO3",
+        "group_charge": 2
+    },
+    "K2CO3": {
+        "cation": ("K+", 2),
+        "anion": ("CO3--", -2),
+        "group": "CO3",
+        "group_charge": 2
+    },
+    "NaHCO3": {
+        "cation": ("Na+", 1),
+        "anion": ("HCO3-", -1),
+        "group": "CO3",
+        "group_charge": 1
+    },
+    "Na2SO4": {
+        "cation": ("Na+", 2),
+        "anion": ("SO4--", -2),
+        "group": "SO4",
+        "group_charge": 2
+    },
+    "K2SO4": {
+        "cation": ("K+", 2),
+        "anion": ("SO4--", -2),
+        "group": "SO4",
+        "group_charge": 2
+    },
+    "Na3PO4": {
+        "cation": ("Na+", 3),
+        "anion": ("PO4---", -3),
+        "group": "PO4",
+        "group_charge": 3
+    }
+}
+
+
+def distribution(h, total, pKas):
+    kas = 10 ** (-np.asarray(pKas, dtype=float))
     n = len(kas)
 
     terms = [h ** n]
 
     for i in range(1, n + 1):
-        terms.append(np.prod(kas[:i]) * h ** (n - i))
+        terms.append(
+            np.prod(kas[:i]) * h ** (n - i)
+        )
 
     fractions = np.asarray(terms) / np.sum(terms)
     return total * fractions
 
 
-def calculate_equilibrium(naoh, hcl_mM, families, kw=1e-14):
-    hcl = hcl_mM / 1000.0
+def solve_general_equilibrium(
+    reagents,
+    species_inputs,
+    hcl_mM,
+    kw
+):
+    chloride = hcl_mM / 1000
+    fixed_positive = 0.0
+    fixed_negative = chloride
+    families = []
 
-    sodium = naoh + sum(
-        family["total"] * len(family["pKas"])
-        for family in families
-    )
+    for reagent in reagents:
+        data = REAGENTS[reagent]
+        amount = st.session_state.get(
+            f"reagent_amount_{reagent}",
+            0.0
+        )
 
-    chloride = hcl
+        cation_name, cation_charge = data["cation"]
+        anion_name, anion_charge = data["anion"]
+
+        if cation_charge > 0:
+            fixed_positive += amount * cation_charge
+
+        if anion_charge < 0:
+            fixed_negative += amount * abs(anion_charge)
+
+        if data.get("acid_equivalents", 0) > 0:
+            fixed_positive += amount * data["acid_equivalents"]
+
+    for group_name, values in species_inputs.items():
+        total = values["total"]
+        pKas = values["pKas"]
+        charges = SPECIES_GROUPS[group_name]["charges"]
+
+        families.append({
+            "name": group_name,
+            "total": total,
+            "pKas": pKas,
+            "charges": charges,
+            "species": SPECIES_GROUPS[group_name]["species"]
+        })
+
+        group_charge = max(abs(min(charges)), 1)
+        fixed_positive += total * group_charge
 
     def charge_balance(log_h):
-        h = 10.0 ** log_h
+        h = 10 ** log_h
         oh = kw / h
-
-        negative_species = oh + chloride
+        positive = h + fixed_positive
+        negative = fixed_negative + oh
 
         for family in families:
-            states = family_distribution(
+            values = distribution(
                 h,
                 family["total"],
                 family["pKas"]
             )
 
-            negative_species += sum(
-                i * states[i]
-                for i in range(len(states))
-            )
+            for concentration, charge in zip(
+                values,
+                family["charges"]
+            ):
+                if charge < 0:
+                    negative += concentration * abs(charge)
 
-        return h + sodium - negative_species
+        return positive - negative
 
     log_h = brentq(charge_balance, -14, 0)
-    h = 10.0 ** log_h
+    h = 10 ** log_h
     oh = kw / h
 
     species = {
@@ -62,197 +261,142 @@ def calculate_equilibrium(naoh, hcl_mM, families, kw=1e-14):
     }
 
     for family in families:
-        states = family_distribution(
+        values = distribution(
             h,
             family["total"],
             family["pKas"]
         )
 
-        for name, concentration in zip(
-            family["names"],
-            states
+        for name, value in zip(
+            family["species"],
+            values
         ):
-            species[name] = concentration
-
-    mass_errors = {}
-
-    for family in families:
-        mass_errors[family["label"]] = (
-            sum(
-                species[name]
-                for name in family["names"]
-            )
-            - family["total"]
-        )
+            species[name] = value
 
     return {
-        "H+": h,
-        "OH-": oh,
         "pH": -np.log10(h),
         "species": species,
-        "charge_residual": charge_balance(log_h),
-        "mass_errors": mass_errors
+        "charge_residual": charge_balance(log_h)
     }
 
 
-GROUPS = {
-    "OCl (hypochlorite)": {
-        "names": ["HOCl", "OCl-"],
-        "default_pKas": [7.53]
-    },
-    "CO3 (carbonate)": {
-        "names": ["H2CO3", "HCO3-", "CO3--"],
-        "default_pKas": [6.35, 10.33]
-    },
-    "SO4 (sulfate)": {
-        "names": ["H2SO4", "HSO4-", "SO4--"],
-        "default_pKas": [-3.0, 1.99]
-    },
-    "PO4 (phosphate)": {
-        "names": [
-            "H3PO4",
-            "H2PO4-",
-            "HPO4--",
-            "PO4---"
-        ],
-        "default_pKas": [2.15, 7.20, 12.35]
-    }
-}
+# ============================================================
+# SIDEBAR AND MAIN PAGE
+# ============================================================
 
+st.title("AquaEquil Chemical Equilibrium Simulator")
 
-st.title("AquaEquil: Chemical Equilibrium Simulator")
-st.caption(
-    "General multi-family acid-base equilibrium, validation, and speciation"
-)
+st.sidebar.header("General conditions")
 
-
-st.sidebar.header("Solution inputs")
-
-naoh = st.sidebar.number_input(
-    "NaOH concentration (M)",
-    min_value=0.0,
-    value=0.001,
-    format="%.8f"
+kw = st.sidebar.number_input(
+    "Water Kw",
+    min_value=1e-16,
+    value=1e-14,
+    format="%.2e"
 )
 
 hcl_mM = st.sidebar.number_input(
-    "HCl concentration (mM)",
+    "Additional HCl concentration (mM)",
     min_value=0.0,
     value=0.0,
     format="%.4f"
 )
 
-kw = st.sidebar.number_input(
-    "Water Kw",
-    min_value=0.0,
-    value=1e-14,
-    format="%.2e"
+st.sidebar.header("Reagents")
+
+selected_reagents = st.sidebar.multiselect(
+    "Choose added reagent(s)",
+    list(REAGENTS.keys()),
+    default=["NaOH"]
 )
 
-
-st.sidebar.header("Acid families")
-
-selected = st.sidebar.multiselect(
-    "Select species groups",
-    list(GROUPS.keys()),
-    default=["OCl (hypochlorite)"]
-)
-
-
-families = []
-
-for label in selected:
-    info = GROUPS[label]
-
-    st.sidebar.markdown(f"**{label}**")
-
-    total = st.sidebar.number_input(
-        f"{label} total concentration (M)",
+for reagent in selected_reagents:
+    st.sidebar.number_input(
+        f"{reagent} amount (M)",
         min_value=0.0,
         value=0.001,
         format="%.8f",
-        key=f"total_{label}"
+        key=f"reagent_amount_{reagent}"
+    )
+
+st.sidebar.header("Species groups")
+
+selected_groups = st.sidebar.multiselect(
+    "Choose species group(s)",
+    list(SPECIES_GROUPS.keys()),
+    default=["OCl"]
+)
+
+species_inputs = {}
+
+for group in selected_groups:
+    group_data = SPECIES_GROUPS[group]
+
+    st.sidebar.markdown(f"### {group}")
+
+    total = st.sidebar.number_input(
+        f"{group} total concentration (M)",
+        min_value=0.0,
+        value=0.001,
+        format="%.8f",
+        key=f"total_{group}"
     )
 
     pKas = []
 
-    for i, default in enumerate(info["default_pKas"]):
+    for index, default in enumerate(group_data["pKas"]):
         pka = st.sidebar.number_input(
-            f"{label} pKa {i + 1}",
+            f"{group} pKa {index + 1}",
             value=float(default),
             format="%.4f",
-            key=f"pka_{label}_{i}"
+            key=f"pka_{group}_{index}"
         )
 
         pKas.append(pka)
 
-    families.append({
-        "label": label,
+    species_inputs[group] = {
         "total": total,
-        "pKas": pKas,
-        "names": info["names"]
-    })
+        "pKas": pKas
+    }
 
+if not selected_reagents:
+    st.warning("Choose at least one reagent.")
+    st.stop()
 
-if not families:
-    st.warning("Select at least one species group.")
+if not selected_groups:
+    st.warning("Choose at least one species group.")
+    st.stop()
 
-    families = [{
-        "label": "OCl (hypochlorite)",
-        "total": 0.0,
-        "pKas": [7.53],
-        "names": ["HOCl", "OCl-"]
-    }]
-
-
-calculate_button = st.sidebar.button(
-    "Calculate Equilibrium",
-    type="primary"
-)
-
-
-if "has_calculated" not in st.session_state:
-    st.session_state.has_calculated = False
-
-if calculate_button:
-    st.session_state.has_calculated = True
-
-if not st.session_state.has_calculated:
-    st.info(
-        "Showing the default calculation. "
-        "Change inputs and press Calculate Equilibrium to update it."
-    )
-
-
-result = calculate_equilibrium(
-    naoh,
+result = solve_general_equilibrium(
+    selected_reagents,
+    species_inputs,
     hcl_mM,
-    families,
     kw
 )
 
-all_species = result["species"]
 
-dominant_species = max(
-    all_species,
-    key=all_species.get
-)
+# ============================================================
+# TABS
+# ============================================================
 
-
-calculator_tab, validation_tab, graphs_tab, about_tab = st.tabs(
+main_tab, validation_tab, graph_tab, titration_tab = st.tabs(
     [
-        "Equilibrium Calculator",
+        "Main",
         "Validation",
-        "Graphs",
-        "About the Model"
+        "Independent Graphs",
+        "Titration Graph"
     ]
 )
 
 
-with calculator_tab:
-    st.subheader("Equilibrium Results")
+# ============================================================
+# MAIN PAGE
+# ============================================================
 
-    col1, col2, col3 = st.columns(3)
+with main_tab:
+    st.subheader("Selected Chemical System")
+
+    col1, col2 = st.columns(2)
 
     with col1:
         st.metric(
@@ -261,20 +405,21 @@ with calculator_tab:
         )
 
     with col2:
-        st.metric(
-            "Dominant Species",
-            dominant_species
+        dominant = max(
+            result["species"],
+            key=result["species"].get
         )
 
-    with col3:
         st.metric(
-            "HCl Input",
-            f"{hcl_mM:.5f} mM"
+            "Largest Species",
+            dominant
         )
+
+    st.markdown("### All Equilibrium Species")
 
     result_table = pd.DataFrame({
-        "Species": list(all_species.keys()),
-        "Concentration (M)": list(all_species.values())
+        "Species": list(result["species"].keys()),
+        "Concentration (M)": list(result["species"].values())
     })
 
     st.dataframe(
@@ -289,79 +434,208 @@ with calculator_tab:
         f"`{result['charge_residual']:.6e} M`"
     )
 
-    maximum_mass_error = max(
-        abs(value)
-        for value in result["mass_errors"].values()
-    )
 
-    st.markdown(
-        f"Maximum family mass error: "
-        f"`{maximum_mass_error:.6e} M`"
-    )
-
-    if (
-        abs(result["charge_residual"]) < 1e-7
-        and maximum_mass_error < 1e-7
-    ):
-        st.success("Mass and charge balances are satisfied.")
-    else:
-        st.warning("Check the balance errors.")
-
+# ============================================================
+# VALIDATION PAGE
+# ============================================================
 
 with validation_tab:
-    st.subheader("Balance Validation")
+    st.subheader("Original NaOH–NaOCl–HCl Validation")
 
-    validation_rows = []
+    st.info(
+        "This page preserves the original validation cases "
+        "and does not use the new general reagent model."
+    )
 
-    for family, error in result["mass_errors"].items():
-        validation_rows.append({
-            "Family": family,
-            "Error (M)": error
+    naoh_validation = st.number_input(
+        "Validation NaOH concentration (M)",
+        min_value=0.0,
+        value=0.001,
+        format="%.8f",
+        key="validation_naoh"
+    )
+
+    naocl_validation = st.number_input(
+        "Validation NaOCl concentration (M)",
+        min_value=0.0,
+        value=0.001,
+        format="%.8f",
+        key="validation_naocl"
+    )
+
+    pka_validation = st.number_input(
+        "Validation HOCl pKa",
+        value=7.53,
+        format="%.4f",
+        key="validation_pka"
+    )
+
+    validation_hcl = [
+        0.00,
+        0.50,
+        1.00,
+        1.50,
+        1.90
+    ]
+
+    reference_pH = {
+        0.00: 11.00,
+        0.50: 10.70,
+        1.00: 9.26,
+        1.50: 7.53,
+        1.90: 6.58
+    }
+
+    rows = []
+
+    for hcl in validation_hcl:
+        current = calculate_original_equilibrium(
+            naoh_validation,
+            naocl_validation,
+            hcl,
+            pka_validation,
+            kw
+        )
+
+        expected = reference_pH[hcl]
+        difference = current["pH"] - expected
+
+        rows.append({
+            "HCl (mM)": hcl,
+            "Calculated pH": current["pH"],
+            "Expected pH": expected,
+            "Difference": difference,
+            "Charge residual (M)": current["charge_residual"],
+            "Mass error (M)": current["mass_error"],
+            "Status": (
+                "PASS"
+                if abs(difference) <= 0.10
+                and abs(current["charge_residual"]) < 1e-7
+                and abs(current["mass_error"]) < 1e-7
+                else "CHECK"
+            )
         })
 
-    validation_rows.append({
-        "Family": "Charge balance",
-        "Error (M)": result["charge_residual"]
-    })
-
-    validation_df = pd.DataFrame(validation_rows)
+    validation_df = pd.DataFrame(rows)
 
     st.dataframe(
         validation_df.style.format({
-            "Error (M)": "{:.6e}"
+            "HCl (mM)": "{:.2f}",
+            "Calculated pH": "{:.4f}",
+            "Expected pH": "{:.2f}",
+            "Difference": "{:+.4f}",
+            "Charge residual (M)": "{:.2e}",
+            "Mass error (M)": "{:.2e}"
         }),
         use_container_width=True
     )
 
     st.download_button(
-        "Download Validation Results as CSV",
+        "Download Validation CSV",
         validation_df.to_csv(index=False),
-        "AquaEquil_validation_results.csv",
+        "AquaEquil_validation.csv",
         "text/csv"
     )
 
+    st.markdown("### Original Validation Graphs")
 
-with graphs_tab:
-    st.subheader(
-        "Titration, Speciation, and Composition Graphs"
+    validation_curve = [
+        calculate_original_equilibrium(
+            naoh_validation,
+            naocl_validation,
+            hcl,
+            pka_validation,
+            kw
+        )
+        for hcl in np.linspace(0, 1.9, 100)
+    ]
+
+    hcl_curve = np.linspace(0, 1.9, 100)
+
+    fig, axes = plt.subplots(
+        2,
+        1,
+        figsize=(10, 8)
     )
 
-    maximum_hcl = max(
-        1.9,
-        hcl_mM * 1.2
+    axes[0].plot(
+        hcl_curve,
+        [x["pH"] for x in validation_curve],
+        linewidth=2,
+        label="Calculated pH"
+    )
+
+    axes[0].scatter(
+        validation_hcl,
+        [
+            calculate_original_equilibrium(
+                naoh_validation,
+                naocl_validation,
+                hcl,
+                pka_validation,
+                kw
+            )["pH"]
+            for hcl in validation_hcl
+        ],
+        color="red",
+        marker="x",
+        label="Validation points"
+    )
+
+    axes[0].set_title("Original Validation Titration Curve")
+    axes[0].set_xlabel("HCl addition (mM)")
+    axes[0].set_ylabel("pH")
+    axes[0].set_ylim(0, 14)
+    axes[0].grid(alpha=0.3)
+    axes[0].legend()
+
+    axes[1].plot(
+        hcl_curve,
+        [x["HOCl"] * 1000 for x in validation_curve],
+        label="HOCl",
+        linewidth=2
+    )
+
+    axes[1].plot(
+        hcl_curve,
+        [x["OCl"] * 1000 for x in validation_curve],
+        label="OCl-",
+        linewidth=2
+    )
+
+    axes[1].set_title("Original HOCl/OCl- Speciation")
+    axes[1].set_xlabel("HCl addition (mM)")
+    axes[1].set_ylabel("Concentration (mM)")
+    axes[1].grid(alpha=0.3)
+    axes[1].legend()
+
+    fig.tight_layout()
+    st.pyplot(fig)
+
+
+# ============================================================
+# INDEPENDENT GRAPH PAGE
+# ============================================================
+
+with graph_tab:
+    st.subheader("Independent Graphs")
+
+    st.write(
+        "These graphs represent only the reagents and species "
+        "selected on the Main page."
     )
 
     hcl_values = np.linspace(
         0,
-        maximum_hcl,
-        100
+        max(1.9, hcl_mM * 1.5 + 0.1),
+        120
     )
 
     curve = [
-        calculate_equilibrium(
-            naoh,
+        solve_general_equilibrium(
+            selected_reagents,
+            species_inputs,
             hcl_value,
-            families,
             kw
         )
         for hcl_value in hcl_values
@@ -375,180 +649,167 @@ with graphs_tab:
 
     axes[0].plot(
         hcl_values,
-        [item["pH"] for item in curve],
-        color="#1769aa",
+        [x["pH"] for x in curve],
+        color="blue",
         linewidth=2
     )
 
-    axes[0].scatter(
-        [hcl_mM],
-        [result["pH"]],
-        color="black",
-        zorder=5,
-        label="Current input"
-    )
-
+    axes[0].set_title("pH of Selected Reaction System")
     axes[0].set_xlabel("HCl addition (mM)")
     axes[0].set_ylabel("pH")
     axes[0].set_ylim(0, 14)
-    axes[0].set_title("Titration Curve")
     axes[0].grid(alpha=0.3)
-    axes[0].legend()
 
-    graph_species = [
-        "H+",
-        "OH-"
-    ]
+    species_names = list(result["species"].keys())
 
-    for family in families:
-        graph_species.extend(family["names"])
-
-    for species_name in graph_species:
+    for name in species_names:
         axes[1].plot(
             hcl_values,
             [
-                item["species"][species_name] * 1000
-                for item in curve
+                x["species"].get(name, 0) * 1000
+                for x in curve
             ],
             linewidth=2,
-            label=species_name
+            label=name
         )
 
-    axes[1].set_yscale("log")
+    axes[1].set_title("All Interacting Species")
     axes[1].set_xlabel("HCl addition (mM)")
     axes[1].set_ylabel("Concentration (mM)")
-    axes[1].set_title("All Interacting Species")
     axes[1].grid(alpha=0.3)
     axes[1].legend(ncol=3)
 
-    pH_values = np.linspace(
-        0,
-        14,
-        250
-    )
+    for group in selected_groups:
+        group_data = SPECIES_GROUPS[group]
+        pH_values = np.linspace(0, 14, 250)
 
-    for family in families:
         fractions = np.array([
-            family_distribution(
+            distribution(
                 10 ** (-pH),
                 1.0,
-                family["pKas"]
+                species_inputs[group]["pKas"]
             )
             for pH in pH_values
         ])
 
-        for index, species_name in enumerate(
-            family["names"]
-        ):
+        for index, name in enumerate(group_data["species"]):
             axes[2].plot(
                 pH_values,
                 fractions[:, index] * 100,
                 linewidth=2,
-                label=species_name
+                label=name
             )
 
+    axes[2].set_title("Fractional Species Distribution")
     axes[2].set_xlabel("pH")
-    axes[2].set_ylabel("Fraction of family (%)")
+    axes[2].set_ylabel("Fraction (%)")
     axes[2].set_ylim(0, 100)
-    axes[2].set_title("Species Distribution Versus pH")
     axes[2].grid(alpha=0.3)
     axes[2].legend(ncol=3)
 
     fig.tight_layout()
-
     st.pyplot(fig)
 
-    graph_buffer = io.BytesIO()
 
-    fig.savefig(
-        graph_buffer,
-        format="png",
-        dpi=300,
-        bbox_inches="tight"
+# ============================================================
+# TITRATION PAGE
+# ============================================================
+
+with titration_tab:
+    st.subheader("Titration Graph")
+
+    hcl_values = np.linspace(
+        0,
+        max(1.9, hcl_mM * 1.5 + 0.1),
+        150
     )
 
-    st.download_button(
-        "Download Graphs as PNG",
-        graph_buffer.getvalue(),
-        "AquaEquil_graphs.png",
-        "image/png"
-    )
-
-    st.markdown(
-        "### Family Composition During Titration"
-    )
-
-    family_names = [
-        family["label"]
-        for family in families
+    curve = [
+        solve_general_equilibrium(
+            selected_reagents,
+            species_inputs,
+            hcl_value,
+            kw
+        )
+        for hcl_value in hcl_values
     ]
 
-    family_totals = np.array([
-        [
-            sum(
-                item["species"][name]
-                for name in family["names"]
-            ) * 1000
-            for family in families
-        ]
-        for item in curve
-    ]).T
-
-    fig2, ax2 = plt.subplots(
-        figsize=(11, 5)
+    fig, ax = plt.subplots(
+        figsize=(12, 7)
     )
 
-    ax2.stackplot(
-        hcl_values,
-        family_totals,
-        labels=family_names,
-        alpha=0.85
+    plotted_names = set()
+
+    for group in selected_groups:
+        group_data = SPECIES_GROUPS[group]
+
+        for index, name in enumerate(group_data["species"]):
+            values = []
+
+            for item in curve:
+                values.append(
+                    distribution(
+                        10 ** (-item["pH"]),
+                        1.0,
+                        species_inputs[group]["pKas"]
+                    )[index] * 100
+                )
+
+            ax.plot(
+                hcl_values,
+                values,
+                linewidth=2,
+                label=f"{name} fraction"
+            )
+
+            plotted_names.add(name)
+
+    ax.set_title(
+        "Species Start and End Markers During Titration"
     )
 
-    ax2.set_xlabel("HCl addition (mM)")
-    ax2.set_ylabel("Family concentration (mM)")
-    ax2.set_title(
-        "Total Concentration of Each Selected Acid Family"
-    )
-    ax2.grid(alpha=0.3)
-    ax2.legend(loc="upper left")
+    ax.set_xlabel("HCl addition (mM)")
+    ax.set_ylabel("Fraction of family (%)")
+    ax.set_ylim(0, 100)
+    ax.grid(alpha=0.3)
 
-    fig2.tight_layout()
+    # Markers occur at pKa transition points.
+    # The plotted marker is placed at the HCl amount whose pH is
+    # closest to each pKa.
+    marker_hcl = []
 
-    st.pyplot(fig2)
+    for group in selected_groups:
+        for pka in species_inputs[group]["pKas"]:
+            index = np.argmin([
+                abs(item["pH"] - pka)
+                for item in curve
+            ])
 
-    graph_buffer_2 = io.BytesIO()
+            x_value = hcl_values[index]
+            marker_hcl.append(x_value)
 
-    fig2.savefig(
-        graph_buffer_2,
-        format="png",
-        dpi=300,
-        bbox_inches="tight"
-    )
+            ax.axvline(
+                x_value,
+                color="black",
+                linestyle="--",
+                alpha=0.45
+            )
 
-    st.download_button(
-        "Download Composition Graph as PNG",
-        graph_buffer_2.getvalue(),
-        "AquaEquil_composition.png",
-        "image/png"
-    )
+            ax.text(
+                x_value,
+                96,
+                f"pKa {pka:.2f}",
+                rotation=90,
+                va="top",
+                ha="right",
+                fontsize=8
+            )
 
-
-with about_tab:
-    st.subheader("About the Model")
+    ax.legend(ncol=3)
+    fig.tight_layout()
+    st.pyplot(fig)
 
     st.markdown(
-        """
-The model solves electroneutrality for H+ using Brent's root finder.
-
-Every selected family is represented by all of its protonation states.
-
-H+ and OH- are always included in the result table and speciation graph.
-
-Family concentrations are interpreted as sodium salts of the fully
-deprotonated form.
-
-The model assumes ideal aqueous behavior, constant volume, 25°C pKa
-values, and no precipitation, complexation, redox, or activity corrections.
-"""
+        "Dashed vertical lines mark approximate pKa transition locations. "
+        "They show where adjacent protonation states become comparable."
     )
