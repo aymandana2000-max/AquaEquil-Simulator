@@ -1,17 +1,3 @@
-File "/mount/src/aquaequil-simulator/app.py", line 7
-  Use this updated file as the deployed app’s main file:
-                                           ^
-SyntaxError: invalid character '’' (U+2019)
-The error happened because explanatory text was pasted into app.py as if it were Python code.
-
-I created a clean deployment file containing only valid Python:
-
-Replace the contents of your deployed app.py with this file. The syntax check passed.
-
-
-app.py
-Code
-
 
 
 
