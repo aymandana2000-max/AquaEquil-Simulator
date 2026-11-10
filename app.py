@@ -356,7 +356,7 @@ for group in selected_groups:
         format="%.5f",
         key=f"total_{group}"
     )
-pKas = GROUPS[group]["pKas"]
+    pKas = GROUPS[group]["pKas"]
 
 st.sidebar.write(
     "Assigned pKa values:",
