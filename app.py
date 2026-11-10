@@ -123,7 +123,7 @@ for label in selected:
         "label": label, "total": total, "pKas": pKas,
         "names": info["names"], "formula": info["formula"]
     })
-    if not families:
+if not families:
     st.warning("Select at least one species group.")
     families = [{
         "label": "OCl (hypochlorite)", "total": 0.0, "pKas": [7.53],
