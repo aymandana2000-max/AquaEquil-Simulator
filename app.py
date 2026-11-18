@@ -35,14 +35,16 @@ GROUPS = {
 }
 
 
+# Strong bases contribute only their metal cation.
+# OH⁻ is calculated by the equilibrium solver.
 REAGENTS = {
-    "NaOH": {"positive": 1, "negative": 1, "groups": []},
-    "KOH": {"positive": 1, "negative": 1, "groups": []},
-    "LiOH": {"positive": 1, "negative": 1, "groups": []},
-    "Ca(OH)₂": {"positive": 2, "negative": 2, "groups": []},
+    "NaOH": {"positive": 1, "negative": 0, "groups": [], "cation": "Na⁺"},
+    "KOH": {"positive": 1, "negative": 0, "groups": [], "cation": "K⁺"},
+    "LiOH": {"positive": 1, "negative": 0, "groups": [], "cation": "Li⁺"},
+    "Ca(OH)₂": {"positive": 2, "negative": 0, "groups": [], "cation": "Ca²⁺"},
 
-    "HCl": {"positive": 0, "negative": 1, "groups": []},
-    "HNO₃": {"positive": 0, "negative": 1, "groups": []},
+    "HCl": {"positive": 0, "negative": 1, "groups": [], "anion": "Cl⁻"},
+    "HNO₃": {"positive": 0, "negative": 1, "groups": [], "anion": "NO₃⁻"},
 
     "H₂SO₄": {
         "positive": 0,
@@ -50,17 +52,17 @@ REAGENTS = {
         "groups": ["SO₄"]
     },
 
-    "NaOCl": {"positive": 1, "negative": 1, "groups": ["OCl"]},
-    "KOCl": {"positive": 1, "negative": 1, "groups": ["OCl"]},
+    "NaOCl": {"positive": 1, "negative": 0, "groups": ["OCl"], "cation": "Na⁺"},
+    "KOCl": {"positive": 1, "negative": 0, "groups": ["OCl"], "cation": "K⁺"},
 
-    "Na₂CO₃": {"positive": 2, "negative": 2, "groups": ["CO₃"]},
-    "K₂CO₃": {"positive": 2, "negative": 2, "groups": ["CO₃"]},
-    "NaHCO₃": {"positive": 1, "negative": 1, "groups": ["CO₃"]},
+    "Na₂CO₃": {"positive": 2, "negative": 0, "groups": ["CO₃"], "cation": "Na⁺"},
+    "K₂CO₃": {"positive": 2, "negative": 0, "groups": ["CO₃"], "cation": "K⁺"},
+    "NaHCO₃": {"positive": 1, "negative": 0, "groups": ["CO₃"], "cation": "Na⁺"},
 
-    "Na₂SO₄": {"positive": 2, "negative": 2, "groups": ["SO₄"]},
-    "K₂SO₄": {"positive": 2, "negative": 2, "groups": ["SO₄"]},
+    "Na₂SO₄": {"positive": 2, "negative": 0, "groups": ["SO₄"], "cation": "Na⁺"},
+    "K₂SO₄": {"positive": 2, "negative": 0, "groups": ["SO₄"], "cation": "K⁺"},
 
-    "Na₃PO₄": {"positive": 3, "negative": 3, "groups": ["PO₄"]}
+    "Na₃PO₄": {"positive": 3, "negative": 0, "groups": ["PO₄"], "cation": "Na⁺"}
 }
 
 
@@ -81,16 +83,14 @@ def distribution(h, total, pKas):
     return total * terms / terms.sum()
 
 
-def get_group_totals(selected_reagents, reagent_amounts):
+def get_group_totals(selected_reagents, amounts):
     totals = {}
 
     for reagent in selected_reagents:
-        amount = reagent_amounts[reagent]
-
         for group in REAGENTS[reagent]["groups"]:
             totals[group] = (
                 totals.get(group, 0.0)
-                + amount
+                + amounts[reagent]
             )
 
     return totals
@@ -116,13 +116,8 @@ def solve_general(
         data = REAGENTS[reagent]
         amount = amounts[reagent]
 
-        fixed_positive += (
-            amount * data["positive"]
-        )
-
-        fixed_negative += (
-            amount * data["negative"]
-        )
+        fixed_positive += amount * data["positive"]
+        fixed_negative += amount * data["negative"]
 
     adjusted_group_totals = {}
 
@@ -156,9 +151,7 @@ def solve_general(
                 data["charges"]
             ):
                 if charge < 0:
-                    negative += (
-                        value * abs(charge)
-                    )
+                    negative += value * abs(charge)
 
         return positive - negative
 
@@ -191,56 +184,23 @@ def solve_general(
         ):
             species[name] = value
 
-    # Spectator ions are added here, inside the function.
+    # Add spectator ions to the result table and graphs.
     for reagent in selected_reagents:
         amount = amounts[reagent]
+        data = REAGENTS[reagent]
 
-        if reagent in [
-            "KOH",
-            "K₂CO₃",
-            "K₂SO₄",
-            "KOCl"
-        ]:
-            species["K⁺"] = (
-                species.get("K⁺", 0.0)
-                + amount * REAGENTS[reagent]["positive"]
+        if "cation" in data:
+            cation = data["cation"]
+            species[cation] = (
+                species.get(cation, 0.0)
+                + amount * data["positive"]
             )
 
-        elif reagent in [
-            "NaOH",
-            "NaOCl",
-            "Na₂CO₃",
-            "NaHCO₃",
-            "Na₂SO₄",
-            "Na₃PO₄"
-        ]:
-            species["Na⁺"] = (
-                species.get("Na⁺", 0.0)
-                + amount * REAGENTS[reagent]["positive"]
-            )
-
-        elif reagent == "LiOH":
-            species["Li⁺"] = (
-                species.get("Li⁺", 0.0)
-                + amount
-            )
-
-        elif reagent == "Ca(OH)₂":
-            species["Ca²⁺"] = (
-                species.get("Ca²⁺", 0.0)
-                + amount
-            )
-
-        elif reagent == "HCl":
-            species["Cl⁻"] = (
-                species.get("Cl⁻", 0.0)
-                + amount
-            )
-
-        elif reagent == "HNO₃":
-            species["NO₃⁻"] = (
-                species.get("NO₃⁻", 0.0)
-                + amount
+        if "anion" in data:
+            anion = data["anion"]
+            species[anion] = (
+                species.get(anion, 0.0)
+                + amount * data["negative"]
             )
 
     return {
@@ -369,11 +329,7 @@ if amounts_ready:
 
 
 main_page, validation_page, about_page = st.tabs(
-    [
-        "Main",
-        "Validation",
-        "About"
-    ]
+    ["Main", "Validation", "About"]
 )
 
 
@@ -415,7 +371,7 @@ with main_page:
                 key=chemical_species.get
             )
             if chemical_species
-            else "No acid-base species selected"
+            else "No chemical species"
         )
 
         col1, col2 = st.columns(2)
@@ -453,8 +409,12 @@ with main_page:
 
         st.header("Visualization")
 
+        # ----------------------------------------------------
+        # Interaction graph: ALL species versus pH
+        # ----------------------------------------------------
+
         st.subheader(
-            "Equilibrium species distribution versus pH"
+            "Equilibrium species concentration versus pH"
         )
 
         pH_values = np.linspace(
@@ -466,6 +426,8 @@ with main_page:
         fig_interaction, ax_interaction = plt.subplots(
             figsize=(10, 6)
         )
+
+        plotted = set()
 
         for group, total in group_totals.items():
             data = GROUPS[group]
@@ -489,6 +451,8 @@ with main_page:
                     label=name
                 )
 
+                plotted.add(name)
+
         h_values = 10 ** (-pH_values)
         oh_values = 1e-14 / h_values
 
@@ -508,8 +472,19 @@ with main_page:
             label="OH⁻"
         )
 
+        plotted.update(["H⁺", "OH⁻"])
+
+        for name, value in result["species"].items():
+            if name not in plotted:
+                ax_interaction.axhline(
+                    value * 1000,
+                    linestyle=":",
+                    linewidth=1.5,
+                    label=name
+                )
+
         ax_interaction.set_title(
-            "Equilibrium species concentration versus pH"
+            "All interacting species versus pH"
         )
         ax_interaction.set_xlabel("pH")
         ax_interaction.set_ylabel(
@@ -530,19 +505,24 @@ with main_page:
         fig_interaction.tight_layout()
         st.pyplot(fig_interaction)
 
-        st.subheader("Titration curve")
+        # ----------------------------------------------------
+        # Titration graph
+        # ----------------------------------------------------
 
-        titrant = st.selectbox(
-            "Select titrant",
-            selected_reagents
-        )
+        st.subheader("Titration curve")
 
         if len(selected_reagents) < 2:
             st.info(
-                "Select at least two reagents to create "
+                "Select an acid and a base to create "
                 "a meaningful titration curve."
             )
+
         else:
+            titrant = st.selectbox(
+                "Select titrant",
+                selected_reagents
+            )
+
             initial_amount = reagent_amounts[titrant]
 
             titrant_values = np.linspace(
@@ -888,21 +868,18 @@ with about_page:
         Species groups are generated automatically from the
         selected reagents.
 
-        H⁺ and OH⁻ are included as water-equilibrium species.
-        Spectator ions such as Na⁺, K⁺, Li⁺, Ca²⁺, Cl⁻, and NO₃⁻
-        are also displayed when their reagents are selected.
+        H⁺ and OH⁻ are water-equilibrium species. Spectator
+        ions such as Na⁺, K⁺, Li⁺, Ca²⁺, Cl⁻, and NO₃⁻ are
+        included when their reagents are selected.
 
-        ### Assigned pKa values
+        Assigned pKa values:
 
-        OCl: 7.53
+        - OCl: 7.53
+        - CO₃: 6.35 and 10.33
+        - SO₄: -3.00 and 1.99
+        - PO₄: 2.15, 7.20, and 12.35
 
-        CO₃: 6.35 and 10.33
-
-        SO₄: -3.00 and 1.99
-
-        PO₄: 2.15, 7.20, and 12.35
-
-        ### Assumptions
+        Assumptions:
 
         - Ideal aqueous solution
         - Constant volume
