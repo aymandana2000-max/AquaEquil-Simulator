@@ -31,6 +31,7 @@ GROUPS = {
         "pKas": [-3.00, 1.99],
         "charges": [0, -1, -2]
     },
+    
     "PO₄": {
         "species": ["H₃PO₄", "H₂PO₄⁻", "HPO₄²⁻", "PO₄³⁻"],
         "pKas": [2.15, 7.20, 12.35],
@@ -524,91 +525,71 @@ with main_page:
         # Titration graph using selected reagent
         # ----------------------------------------------------
 
-        st.subheader(
-            "Titration response of the selected reagent"
-        )
+        st.subheader("Titration curve")
 
         titrant = st.selectbox(
-            "Select titrant for the graph",
+            "Select titrant",
             selected_reagents
         )
-
-        starting_amount = reagent_amounts[titrant]
-
+        
+        initial_amounts = dict(reagent_amounts)
+        
         titrant_values = np.linspace(
             0.0,
-            max(starting_amount * 2.0, 0.001),
+            max(initial_amounts[titrant] * 2.0, 0.010),
             150
         )
-
-        titration_curve = [
-            solve_general(
-                selected_reagents,
-                reagent_amounts,
-                group_totals,
-                extra_reagent=titrant,
-                extra_amount=value
+        
+        titration_results = []
+        
+        for titrant_amount in titrant_values:
+            changed_amounts = dict(initial_amounts)
+            changed_amounts[titrant] = titrant_amount
+        
+            titration_results.append(
+                solve_general(
+                    selected_reagents,
+                    changed_amounts,
+                    group_totals,
+                    kw=1e-14
+                )
             )
-            for value in titrant_values
-        ]
-
+        
         fig_titration, ax_titration = plt.subplots(
             figsize=(10, 6)
         )
-
-        for species_name in result["species"]:
-            values = [
-                item["species"].get(
-                    species_name,
-                    0.0
-                ) * 1000
-                for item in titration_curve
-            ]
-
-            ax_titration.plot(
-                titrant_values,
-                values,
-                linewidth=2,
-                label=species_name
-            )
-
+        
+        ax_titration.plot(
+            titrant_values,
+            [
+                item["pH"]
+                for item in titration_results
+            ],
+            linewidth=2,
+            color="blue",
+            label="Equilibrium pH"
+        )
+        
         ax_titration.set_title(
-            f"Species concentration versus {titrant} concentration"
+            f"Titration curve: pH versus {titrant} added"
         )
+        
         ax_titration.set_xlabel(
-            f"{titrant} concentration (M)"
+            f"{titrant} concentration added (M)"
         )
-        ax_titration.set_ylabel(
-            "Concentration (mM)"
-        )
+        
+        ax_titration.set_ylabel("pH")
+        ax_titration.set_ylim(0, 14)
         ax_titration.grid(alpha=0.3)
-
+        
         ax_titration.legend(
             loc="upper center",
             bbox_to_anchor=(0.5, -0.18),
-            ncol=3,
             frameon=False
         )
-
+        
         fig_titration.tight_layout()
         st.pyplot(fig_titration)
-
-        graph_buffer = io.BytesIO()
-
-        fig_titration.savefig(
-            graph_buffer,
-            format="png",
-            dpi=300,
-            bbox_inches="tight"
-        )
-
-        st.download_button(
-            "Download Visualization Graphs as PNG",
-            graph_buffer.getvalue(),
-            "AquaEquil_visualization.png",
-            "image/png"
-        )
-
 
 # ============================================================
 # VALIDATION PAGE
