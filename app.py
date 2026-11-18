@@ -39,6 +39,12 @@ GROUPS = {
     }
 }
 
+species = {
+    "H⁺": h,
+    "OH⁻": oh
+}
+
+
 
 # ============================================================
 # REAGENTS
@@ -241,6 +247,45 @@ def solve_general(
         ):
             species[name] = value
 
+
+        for reagent in selected_reagents:
+            amount = reagent_amounts[reagent]
+        
+            if reagent in [
+                "KOH",
+                "K₂CO₃",
+                "K₂SO₄",
+                "KOCl"
+            ]:
+                species["K⁺"] = (
+                    species.get("K⁺", 0.0)
+                    + amount * REAGENTS[reagent]["positive"]
+                )
+        
+            elif reagent in [
+                "NaOH",
+                "NaOCl",
+                "Na₂CO₃",
+                "NaHCO₃",
+                "Na₂SO₄",
+                "Na₃PO₄"
+            ]:
+                species["Na⁺"] = (
+                    species.get("Na⁺", 0.0)
+                    + amount * REAGENTS[reagent]["positive"]
+                )
+        
+            elif reagent == "LiOH":
+                species["Li⁺"] = (
+                    species.get("Li⁺", 0.0)
+                    + amount
+                )
+        
+            elif reagent == "Ca(OH)₂":
+                species["Ca²⁺"] = (
+                    species.get("Ca²⁺", 0.0)
+                    + amount
+                )
     return {
         "pH": -np.log10(h),
         "species": species,
@@ -542,10 +587,41 @@ with main_page:
         
         initial_amounts = dict(reagent_amounts)
         
+        acid_equivalents = 0.0
+
+        for reagent in selected_reagents:
+            if reagent in ["HCl", "HNO₃"]:
+                acid_equivalents += reagent_amounts[reagent]
+        
+            elif reagent == "H₂SO₄":
+                acid_equivalents += (
+                    2.0 * reagent_amounts[reagent]
+                )
+        
+        base_equivalents = 0.0
+        
+        for reagent in selected_reagents:
+            if reagent in ["NaOH", "KOH", "LiOH"]:
+                base_equivalents += reagent_amounts[reagent]
+        
+            elif reagent == "Ca(OH)₂":
+                base_equivalents += (
+                    2.0 * reagent_amounts[reagent]
+                )
+        
+        if base_equivalents > 0:
+            equivalence_amount = acid_equivalents
+        else:
+            equivalence_amount = base_equivalents
+        
         titrant_values = np.linspace(
             0.0,
-            max(initial_amounts[titrant] * 2.0, 0.010),
-            150
+            max(
+                equivalence_amount * 1.5,
+                initial_amounts[titrant] * 2.0,
+                0.010
+            ),
+            200
         )
         
         titration_results = []
