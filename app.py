@@ -75,9 +75,9 @@ REAGENTS = {
         "groups": []
     },
     "H₂SO₄": {
-        "positive": 0,
-        "negative": 2,
-        "groups": ["SO₄"]
+    "positive": 0,
+    "negative": 0,
+    "groups": ["SO₄"]
     },
     "NaOCl": {
         "positive": 1,
@@ -175,7 +175,6 @@ def solve_general(
         amount = amounts[reagent]
         data = REAGENTS[reagent]
 
-        fixed_positive += amount * data["positive"]
         fixed_negative += amount * data["negative"]
 
     adjusted_totals = {}
@@ -401,9 +400,15 @@ with main_page:
             )
 
         with col2:
+            chemical_species = {
+                name: concentration
+                for name, concentration in result["species"].items()
+                if name not in ["H⁺", "OH⁻"]
+            }
+            
             largest_species = max(
-                result["species"],
-                key=result["species"].get
+                chemical_species,
+                key=chemical_species.get
             )
 
             st.metric(
@@ -492,12 +497,16 @@ with main_page:
         )
 
         ax_interaction.set_title(
-            "Equilibrium species concentration versus pH"
+            "Equilibrium species distribution versus pH"
         )
         ax_interaction.set_xlabel("pH")
         ax_interaction.set_ylabel(
             "Concentration (mM)"
         )
+        
+        ax_interaction.set_yscale("log")
+        ax_interaction.set_ylim(bottom=1e-12)
+        
         ax_interaction.set_xlim(0, 14)
         ax_interaction.grid(alpha=0.3)
 
