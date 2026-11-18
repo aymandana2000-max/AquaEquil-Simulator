@@ -213,7 +213,11 @@ def solve_general(
 
         return positive - negative
 
-    log_h = brentq(charge_balance, -14, 0)
+    log_h = brentq(
+    charge_balance,
+    -20,
+    2
+    )
 
     h = 10 ** log_h
     oh = kw / h
@@ -265,7 +269,11 @@ def original_equilibrium(
 
         return h + sodium - oh - ocl - chloride
 
-    log_h = brentq(charge_balance, -14, 0)
+    log_h = brentq(
+    charge_balance,
+    -20,
+    2
+    )
 
     h = 10 ** log_h
     oh = kw / h
